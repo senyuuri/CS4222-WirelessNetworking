@@ -1,9 +1,12 @@
 #!/usr/bin/python
+import matplotlib.pyplot as plt
 import sys
 import math
 
 # window size for mean square calculation
 W_SIZE = 15
+# gravitational constant
+CONST_G = 9.80
 
 # threshold
 LIMIT_T1 = 2.0
@@ -16,7 +19,11 @@ if len(sys.argv) < 2:
 
 # initialisation
 magnitude = []
+lm =[]
+v = []
 b = []
+t1 = []
+t2 = []
 fname = sys.argv[1]
 
 # read csv file
@@ -24,25 +31,54 @@ fname = sys.argv[1]
 with open(fname, 'r') as fin:
 	lines = fin.readlines()
 	for line in lines:
-		r = [float(x) for x in line.split(',')]
+		r = [float(x)*CONST_G for x in line.split(',')]
 		# compute magnitude of acceleration
 		a = math.sqrt(math.pow(r[0],2) + math.pow(r[1],2) + math.pow(r[2], 2))
 		magnitude.append(a)
+# plt.plot(magnitude)
+# plt.show()
 # except:
 # 	print('IO Error')
 # 	sys.exit(2)
 
-for i in range(W_SIZE, len(magnitude) - W_SIZE):
-	# get the slice of current window
-	w = magnitude[i - W_SIZE : i + W_SIZE + 1]
-	# compute local mean in the range of [i-W_SIZE, i+W_SIZE]
-	lmean = sum(w) / (2 * W_SIZE + 1)
-	# compute local variance
-	var = sum([math.pow((x - lmean),2) for x in w]) / (2 * W_SIZE + 1)
-	# apply threshold
-	b1 = 1 if math.sqrt(var) > LIMIT_T1 else 0
-	b2 = 1 if math.sqrt(var) < LIMIT_T2 else 0
-	b.append((b1, b2))
+# compute local mean in the range of [i-W_SIZE, i+W_SIZE]
+for i in range(len(magnitude)):
+	# set local mean as original magnitude for boundary values
+	if i < W_SIZE or i >= len(magnitude) - W_SIZE:
+		lm.append(magnitude[i])
+	else:
+		# get the slice of current window
+		w = magnitude[i - W_SIZE : i + W_SIZE + 1]
+		lmean = sum(w) / (2 * W_SIZE + 1)
+		lm.append(lmean)
+
+# compute local variance
+for i in range(len(magnitude)):
+	# var = sum([math.pow((x - lmean),2) for x in w]) / (2 * W_SIZE + 1)
+	if i < W_SIZE or i >= len(magnitude) - W_SIZE:
+		v.append(0)
+		b.append((0, 0))
+		t1.append(0)
+		t2.append(0)
+	else:
+		total = 0
+		for j in range(i - W_SIZE, i + W_SIZE + 1):
+			total += math.pow(magnitude[j] - lm[j-W_SIZE], 2)
+		var = total / (2 * W_SIZE + 1)
+		v.append(math.sqrt(var))
+		# apply threshold
+		b1 = 1 if math.sqrt(var) > LIMIT_T1 else 0
+		b2 = 1 if math.sqrt(var) < LIMIT_T2 else 0
+		b.append((b1, b2))
+		t1.append(b1)
+		t2.append(b2)
+
+plt.plot(magnitude[W_SIZE:-W_SIZE])
+plt.plot(lm)
+plt.plot(v)
+plt.plot(t1)
+plt.plot(t2)
+plt.show()
 
 # count steps
 steps = 0
@@ -55,6 +91,5 @@ for i in range(1, len(b) - 1):
 		for j in range(i+1, end+1):
 			if b[j][1] == 1:
 				steps += 1
-				break
 
 print(steps)
