@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import sys
 import math
 
+flist = ['1min30sec163steps', '1min30sec164hold', '1min30sec167steps', '1min30sec177hold']
+
 # window size for mean square calculation
 W_SIZE = 15
 # gravitational constant
@@ -29,7 +31,7 @@ b = []
 t1 = []
 # threshold T2
 t2 = []
-fname = sys.argv[1]
+#fname = sys.argv[1]
 
 # read csv file
 try:
@@ -80,6 +82,7 @@ for i in range(len(magnitude)):
 		t2.append(b2)
 
 # DEBUG plot
+plt.figure()
 plt.plot(magnitude)
 plt.plot(lm)
 plt.plot(v)
