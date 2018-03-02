@@ -61,10 +61,7 @@ def savitzky_golay(y, window_size, order, deriv=0, rate=1):
     y = np.concatenate((firstvals, y, lastvals))
     return np.convolve( m[::-1], y, mode='valid')
 
-# magnitude
-x_cor = []
-y_cor = []
-z_cor = []
+# magnitude 
 a_cor = []
 
 # read filename from command
@@ -76,27 +73,7 @@ if len(sys.argv) < 2:
 filename = sys.argv[1]
 data = np.genfromtxt(filename, delimiter=',', names=['x', 'y', 'z'])
 for row in data:
-    x_cor.append(row[0])
-    y_cor.append(row[1])
-    z_cor.append(row[2])
     a_cor.append(math.sqrt(math.pow(float(row[0]),2) + math.pow(float(row[1]),2) + math.pow(float(row[2]), 2)))
-
-# plot original x, y, z data
-# plt.subplot(3, 1, 1)
-# plt.plot(x_cor)
-# plt.title(filename)
-# plt.ylabel('m/s')
-# plt.xlabel('samples')
-
-# plt.subplot(3, 1, 2)
-# plt.plot(y_cor)
-# plt.ylabel('m/s')
-
-# plt.subplot(3, 1, 3)
-# plt.plot(z_cor)
-# plt.ylabel('m/s')
-
-# plt.show()
 
 t = np.arange(0.0, 11922, 1)
 # smooth accelerator readings
