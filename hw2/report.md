@@ -39,6 +39,14 @@ which is an OS dependent constant. Our preliminary test shows that `CLOCK_SECOND
 
 ### 4. Description of the Algorithm implemented
 
+We designed an algorithm that uses the mean crossing rate of the accelerometer data to give an estimate of the step count.
+
+By analysing the movement of human walking, we can see that in one step, the walking person would experience a major upward and a major downward movement to get back to his/her original position. So by looking at the accelerometer data on the y-axis, we would expect the curve to cross its mean value twice in one step. The same goes for x and z axis as well.
+
+To remove the noise(small body movements, jitters), we used the Savitzky–Golay filter to smoothen the curve. Then we calculate the mean value of the data and shift all the data points by that mean value so that the curve would be along the 0-axis. Then we calculate the zero crossing rate and divide the value by 2 to get the estimate of the step count.
+
+By using the algorithm on multiple data, we discovered that a window size of 50-70 for the filter would yield optimal accuracy.
+
  
 
 ### 5. Accuracy of the Algorithm
