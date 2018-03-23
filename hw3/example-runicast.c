@@ -122,9 +122,10 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
   uint16_t pkt_len = packetbuf_datalen();
   // char buf[BUFFER_SIZE] = {'\0'};
   // memcpy(buf, packetbuf_dataptr(), pkt_len); 
-  static uint8_t buf[50];
-  memset(buf, '\0', 50);
-  strcpy(buf, packetbuf_dataptr());
+  static uint8_t buf[50+1];
+  memset(buf, '\0', 50+1);
+  strncpy(buf, packetbuf_dataptr(), 50);
+  buf[50] = '\0';
   printf("%d,runicast message received from %d.%d, seqno %d, length %u, content: %s\n",
 	 recv_pkt_count, from->u8[0], from->u8[1], seqno, (unsigned int)pkt_len, (uint8_t *)buf);
   // for(int i=0; i<50; i+=4){
@@ -184,6 +185,21 @@ PROCESS_THREAD(test_runicast_process, ev, data)
     etimer_set(&et, 10*CLOCK_SECOND);
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
+    if(!runicast_is_transmitting(&runicast)) {
+      linkaddr_t recv;
+
+      packetbuf_copyfrom("helloTest\n", 54);
+      recv.u8[0] = 169;
+      recv.u8[1] = 134;
+
+      printf("%u.%u: sending runicast to address %u.%u\n",
+       linkaddr_node_addr.u8[0],
+       linkaddr_node_addr.u8[1],
+       recv.u8[0],
+       recv.u8[1]);
+
+      runicast_send(&runicast, &recv, MAX_RETRANSMISSIONS);
+    }
   }
 
   PROCESS_END();
