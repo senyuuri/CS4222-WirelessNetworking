@@ -57,7 +57,7 @@
 #define EXT_FLASH_BASE_ADDR                 0
 #define EXT_FLASH_SIZE                      4*1024*1024
 
-#define PACKET_SIZE 10
+#define PACKET_SIZE 50
 static int recv_pkt_count = 0;
 /*---------------------------------------------------------------------------*/
 PROCESS(test_runicast_process, "runicast test");
