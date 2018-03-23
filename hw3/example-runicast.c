@@ -52,18 +52,15 @@
 #define MAX_RETRANSMISSIONS 4
 #define NUM_HISTORY_ENTRIES 4
 
-/* Number of readings to be generated/sent. Size of 10000 samples is about 32KB*/
-#define NUM_SAMPLE 10000
-/* send 1024 bytes at a time */
-#define PACKET_SIZE 1024 
+
+/* receive at most 1024 bytes at a time */
+#define BUFFER_SIZE 1024 
 #define EXT_FLASH_BASE_ADDR_SENSOR_DATA     0 
 #define EXT_FLASH_MEMORY_END_ADDRESS        0x400010 
 #define EXT_FLASH_BASE_ADDR                 0
 #define EXT_FLASH_SIZE                      4*1024*1024
 
-/*---------------------------------------------------------------------------*/
-static int randint=-1;
-static int address_index_writing = -sizeof(randint);
+static int recv_pkt_count = 0;
 /*---------------------------------------------------------------------------*/
 PROCESS(test_runicast_process, "runicast test");
 AUTOSTART_PROCESSES(&test_runicast_process);
@@ -79,9 +76,22 @@ struct history_entry {
 LIST(history_table);
 MEMB(history_mem, struct history_entry, NUM_HISTORY_ENTRIES);
 /*---------------------------------------------------------------------------*/
+
+void print_hex_memory(void *mem) {
+  int i;
+  unsigned char *p = (unsigned char *)mem;
+  for (i=0;i<64;i++) {
+    printf("0x%02x ", p[i]);
+    if ((i%16==0) && i)
+      printf("\n");
+  }
+  printf("\n");
+}
+
 static void
 recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
 {
+  recv_pkt_count++;
   /* OPTIONAL: Sender history */
   struct history_entry *e = NULL;
   for(e = list_head(history_table); e != NULL; e = e->next) {
@@ -101,23 +111,44 @@ recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
   } else {
     /* Detect duplicate callback */
     if(e->seq == seqno) {
-      printf("runicast message received from %d.%d, seqno %d (DUPLICATE)\n",
-	     from->u8[0], from->u8[1], seqno);
+      printf("%d: runicast message received from %d.%d, seqno %d (DUPLICATE)\n",
+	     recv_pkt_count, from->u8[0], from->u8[1], seqno);
       return;
     }
     /* Update existing history entry */
     e->seq = seqno;
   }
 
-  printf("runicast message received from %d.%d, seqno %d\n",
-	 from->u8[0], from->u8[1], seqno);
+  uint16_t pkt_len = packetbuf_datalen();
+  // char buf[BUFFER_SIZE] = {'\0'};
+  // memcpy(buf, packetbuf_dataptr(), pkt_len); 
+  static uint8_t buf[50];
+  memset(buf, '\0', 50);
+  strcpy(buf, packetbuf_dataptr());
+  printf("%d,runicast message received from %d.%d, seqno %d, length %u, content: %s\n",
+	 recv_pkt_count, from->u8[0], from->u8[1], seqno, (unsigned int)pkt_len, (uint8_t *)buf);
+  // for(int i=0; i<50; i+=4){
+  //   static uint8_t intbuf[4];
+  //   memcpy(intbuf, &buf[i], 4);
+  //   printf("i=%d, chrbuf ")
+  //   int reading =  atoi (intbuf);
+  //   printf("%d,", reading);
+  // }
+  // printf("\n");
+  print_hex_memory((uint8_t *)buf);
 }
+
+
+
+
 static void
 sent_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
   printf("runicast message sent to %d.%d, retransmissions %d\n",
 	 to->u8[0], to->u8[1], retransmissions);
 }
+
+
 static void
 timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
@@ -147,85 +178,12 @@ PROCESS_THREAD(test_runicast_process, ev, data)
     PROCESS_WAIT_EVENT_UNTIL(0);
   }
 
-  /* generate 32KB random data and save to external storage */
-  srand(1);
-  leds_on(LEDS_YELLOW);
-
-  if(EXT_FLASH_BASE_ADDR_SENSOR_DATA + address_index_writing + sizeof(randint) < EXT_FLASH_MEMORY_END_ADDRESS){
-    int executed = ext_flash_open();
-    if(!executed) {
-      printf("Cannot open flash\n");
-      ext_flash_close();
-      return 0;
-    }
-    for(int i=0; i< NUM_SAMPLE; i++){
-      randint = rand() % 100;
-      if(i % 1000 == 0){
-        printf("WRITE PROGRESS:%d/10000\n", i); 
-        printf("WRITING TO EXTERNAL FLASH @0x%08X sizeof: %d\n",EXT_FLASH_BASE_ADDR_SENSOR_DATA + address_index_writing, sizeof(randint));
-      }
-      executed = ext_flash_write(EXT_FLASH_BASE_ADDR_SENSOR_DATA + address_index_writing, sizeof(randint), (uint8_t *)&randint);
-      if(!executed) {
-        printf("Error saving data to EXT flash\n");
-      }
-      address_index_writing += sizeof(randint);
-    }
-
-    
-    ext_flash_close();
-  }else{
-    printf("POSSIBLE EXTERNAL FLASH OVERFLOW @0x%08X sizeof: %d\n",EXT_FLASH_BASE_ADDR_SENSOR_DATA + address_index_writing, sizeof(randint));  
-  }
-  leds_off(LEDS_YELLOW);
-
-
-  /* Read test */
-  static int address_offset = 0; 
-  static char sensor_data_int[1];
-
-  int executed = ext_flash_open();
-
-  if(!executed) {
-    printf("Cannot open flash\n");
-    ext_flash_close();
-    return 0;
-  }
-
-  int count = 0;
-  int pointer = EXT_FLASH_BASE_ADDR + address_offset;
-  while(pointer < sizeof(sensor_data_int) * NUM_SAMPLE){
-    executed = ext_flash_read(address_offset, sizeof(sensor_data_int),  (int *)&sensor_data_int);
-    count++;
-    printf("%08X,%d\n", pointer,sensor_data_int[0]);
-    address_offset += sizeof(sensor_data_int);
-    pointer = EXT_FLASH_BASE_ADDR + address_offset;
-  
-  }
-  ext_flash_close();
-  printf("%d samples read successfully", count);
-
-
   while(1) {
     static struct etimer et;
 
     etimer_set(&et, 10*CLOCK_SECOND);
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
 
-    if(!runicast_is_transmitting(&runicast)) {
-      linkaddr_t recv;
-
-      packetbuf_copyfrom("abcdefghijklmnopqrstuvwxyzAabcdefghijklmnopqrstuvwxyzA\n", 54);
-      recv.u8[0] = 169;
-      recv.u8[1] = 134;
-
-      printf("%u.%u: sending runicast to address %u.%u\n",
-	     linkaddr_node_addr.u8[0],
-	     linkaddr_node_addr.u8[1],
-	     recv.u8[0],
-	     recv.u8[1]);
-
-      runicast_send(&runicast, &recv, MAX_RETRANSMISSIONS);
-    }
   }
 
   PROCESS_END();
