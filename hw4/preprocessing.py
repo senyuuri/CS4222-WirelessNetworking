@@ -1,4 +1,4 @@
-filename = 'walk_1_prepro/data_collect_2018_03_20_13_52_12.csv'
+filename = 'walk_3/data_collect.txt'
 
 a = []
 b = -1
@@ -28,7 +28,7 @@ with open(filename, 'r') as fopen:
             result.append([line[0], a[0], a[1], a[2], b, t, l, h])
         raw = fopen.readline()
 
-with open('testing.csv', 'w') as fout:
+with open('walk_3/testing.csv', 'w') as fout:
     for r in result:
         print(r)
         row = ','.join(r)

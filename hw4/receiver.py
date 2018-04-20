@@ -1,3 +1,6 @@
+from sklearn.naive_bayes import BernoulliNB
+from sklearn.externals import joblib
+import numpy
 import paho.mqtt.client as mqtt
 from datetime import datetime
 import json
@@ -12,6 +15,8 @@ idle = True
 acc_data = []
 baro_data = []
 light_data = []
+temp_data = []
+humid_data = []
 
 # Sliding window size
 ACC_WINDOW = 100
@@ -24,7 +29,10 @@ floor_utime = None
 indoor_utime = None
 light_utime = None
 
+# initilise
 fout = open("output.csv", "w")
+# load light sensor data model
+bnb = joblib.load('bnb_model.pkl') 
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
@@ -52,6 +60,13 @@ def on_message(client, userdata, msg):
         light_data.append([int(raw[1]),float(raw[3])])
         process_light_data()
     
+    elif raw[2] == "t":
+        temp_data.append([int(raw[1]),float(raw[3])])
+    
+    elif raw[2] == "h":
+        humid_data.append([int(raw[1]),float(raw[3])])
+        
+    
     sec_diff = int((datetime.now()- start_time).total_seconds())
     if sec_diff != 0 and sec_diff % 5 == 0:
         print("====================")
@@ -67,7 +82,21 @@ def process_baro_data():
     pass
 
 def process_light_data():
-    reading = light_data[-1]
+    now_time = datetime.now()
+    if(light_utime is None or int((now_time - light_utime).total_seconds()) >= 10):
+        readings = numpy.array([baro_data[-1][1], temp_data[-1][1], light_data[-1][1], humid_data[-1][1]])
+        # using Bernoulli Naive Bayes model to predict indoor/outdoor status
+        result = bool(bnb.predict(readings)[0])
+        if result != indoor:
+            # update state change
+            indoor = result
+            indoor_utime = now_time
+
+            if(indoor == True):
+                print(str(light_data[-1][0]) + ', INDOOR\n')
+            else:
+                print(str(light_data[-1][0]) + ', OUTDOOR\n')
+
 
 def exit_handler():
     fout.close()
