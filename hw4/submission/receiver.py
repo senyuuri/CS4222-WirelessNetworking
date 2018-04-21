@@ -1,9 +1,11 @@
-import numpy
-import math
 import paho.mqtt.client as mqtt
 from datetime import datetime
 import json
+import numpy as np
 import atexit
+import math
+
+curr_baro_data_id = 1
 
 # Global states
 floor_change = False
@@ -25,26 +27,33 @@ LIGHT_WINDOW = 5
 # Last state change time
 start_time = datetime.now()
 floor_utime = None
+indoor_utime = None
 light_utime = None
 idle_utime = None
 
 fout = open('output.csv', 'w+')
-
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
     print("Connected with result code "+str(rc))
-
     # Subscribing in on_connect() means that if we lose the connection and
     # reconnect then subscriptions will be renewed.
     client.subscribe("#")
 
+threshold = 0.21
+mean_list = []
+first_mean = 0
+diff_list = []
+window_list = []
+time_list = []
+size=20
+
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
-    #print(msg.topic+" "+str(msg.payload))
+    # print(msg.topic+" "+str(msg.payload))
     json_obj = json.loads(msg.payload) 
     raw = json_obj["value"].split(",")
+    # print(raw)
     if raw[2] == "a":
-        #acc_data.append([int(raw[1]),float(raw[3]),float(raw[4]),float(raw[5])])
         avg_a = math.sqrt(pow(float(raw[3]),2) + pow(float(raw[4]),2) + pow(float(raw[5]), 2))
         acc_data.append([int(raw[1]), avg_a])
         process_acc_data()
@@ -56,23 +65,19 @@ def on_message(client, userdata, msg):
     elif raw[2] == "l":
         light_data.append([int(raw[1]),float(raw[3])])
         process_light_data()
-    
-    elif raw[2] == "t":
-        temp_data.append([int(raw[1]),float(raw[3])])
-    
     elif raw[2] == "h":
         humid_data.append([int(raw[1]),float(raw[3])])
     
-    fout.write(msg.payload + '\n')
-
-    # DEBUG
+    fout.write(msg.payload.decode('utf8') + '\n')
     # sec_diff = int((datetime.now()- start_time).total_seconds())
     # if sec_diff != 0 and sec_diff % 5 == 0:
     #     print("====================")
     #     print("Time: " + str(sec_diff)+"s")
     #     print("acc_data: " + str(len(acc_data)) + "samples receied at " + str(len(acc_data)/sec_diff)+"Hz")
     #     print("baro_data: " + str(len(baro_data)) + "samples receied at " + str(len(baro_data)/sec_diff)+"Hz")
+    #     # print(baro_data)
     #     print("light_data: " + str(len(light_data)) + "samples receied at " + str(len(light_data)/sec_diff)+"Hz")
+    #     # print(light_data)
     
 def process_acc_data():
     global idle 
@@ -93,9 +98,38 @@ def process_acc_data():
                     print(str(acc_data[-1][0]) +',IDLE')
 
 
-def process_baro_data():
-    pass
 
+def process_baro_data():
+    global floor_change 
+    global floor_utime
+    now_time = datetime.now()
+    if(floor_utime is None or int((now_time - floor_utime).total_seconds()) >= 10):
+        if len(baro_data) > size:
+            window_list = [i[1] for i in baro_data[-size:]]
+            time_list = [i[0] for i in baro_data[-size:]]
+            mean = np.mean(window_list)
+            if len(baro_data) >= size:
+                first_mean = np.mean([i[1] for i in baro_data[:size]])
+            mean_list.append(mean)
+
+            diff = mean - first_mean
+            diff_list.append(diff)
+            # with open("test.txt", "a") as myfile:
+            #     myfile.write('time is: ' + str(time_list[len(time_list)-1])+ 'diff list len is: ' + str(len(diff_list)) + ' curr diff: ' + str(diff) + ' prev diff: ' + str(diff_list[len(diff_list)-2]) +'\n')
+            is_floor_change = (diff > threshold and diff_list[len(diff_list)-2] < threshold) or (diff < threshold and diff_list[len(diff_list)-2] > threshold) or (diff > -threshold and diff_list[len(diff_list)-2] < -threshold) or (diff < -threshold and diff_list[len(diff_list)-2] > -threshold)
+            if is_floor_change:
+                new_floor_change = True
+            else:
+                new_floor_change = False
+
+            if new_floor_change != floor_change:
+                floor_change = new_floor_change
+                floor_utime = now_time 
+                if is_floor_change:
+                    print(str(time_list[len(time_list)-2]) + ', FLOOR CHANGE')     
+                else:
+                    print(str(time_list[len(time_list)-2]) + ', NO FLOOR CHANGE')
+    
 def process_light_data():
     global indoor
     global light_utime
@@ -103,21 +137,21 @@ def process_light_data():
     now_time = datetime.now()
     if(light_utime is None or int((now_time - light_utime).total_seconds()) >= 10):
         if len(light_data) >= LIGHT_WINDOW:
-            mean = numpy.mean([x[1] for x in light_data[-LIGHT_WINDOW:]])
+            mean = np.mean([x[1] for x in light_data[-LIGHT_WINDOW:]])
             # print([x[1] for x in light_data[-LIGHT_WINDOW:]])
             # print(mean)
             state = False if mean >= 400 else True
             if(indoor != state):
                 indoor = state
                 if(indoor == True):
-                    print(str(light_data[-1][0]) + ', INDOOR\n')
+                    print(str(light_data[-1][0]) + ', INDOOR')
                 else:
-                    print(str(light_data[-1][0]) + ', OUTDOOR\n')
+                    print(str(light_data[-1][0]) + ', OUTDOOR')
 
 
 def exit_handler():
     fout.close()
-
+# def write_to_file(content):
 atexit.register(exit_handler)
 # Connect to mqtt server
 client = mqtt.Client()
